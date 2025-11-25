@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/fise.svg)](https://www.npmjs.com/package/fise)
 [![npm downloads](https://img.shields.io/npm/dm/fise.svg)](https://www.npmjs.com/package/fise)
-[![license](https://img.shields.io/npm/l/fise.svg)](https://github.com/anbkit/fise/blob/main/LICENSE)
+[![license](https://img.shields.io/github/license/anbkit/fise)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)](https://www.typescriptlang.org/)
 
 ---
