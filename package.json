@@ -1,10 +1,13 @@
 {
 	"name": "fise",
 	"version": "0.1.0",
-	"description": "FISE – Fast Internet Secure Extensible: a keyless, rule-based envelope to protect API & frontend data.",
+	"description": "FISE - Fast Internet Secure Extensible: a keyless, rule-based envelope to protect API & frontend data.",
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
 	"scripts": {
 		"build": "tsc -p tsconfig.json",
 		"test": "npm run build && node --test tests/**/*.mjs"
@@ -19,10 +22,17 @@
 		"web",
 		"typescript"
 	],
-	"author": "",
+	"author": "An Nguyen",
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/anbkit/fise.git"
+	},
+	"bugs": {
+		"url": "https://github.com/anbkit/fise/issues"
+	},
+	"homepage": "https://github.com/anbkit/fise#readme",
 	"devDependencies": {
-		"typescript": "^5.6.0",
-		"@types/node": "^22.13.5"
+		"typescript": "^5.6.0"
 	}
 }

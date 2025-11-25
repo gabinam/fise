@@ -1,4 +1,11 @@
+
 # FISE — Fast Internet Secure Extensible
+
+[![npm version](https://img.shields.io/npm/v/fise.svg)](https://www.npmjs.com/package/fise)
+[![npm downloads](https://img.shields.io/npm/dm/fise.svg)](https://www.npmjs.com/package/fise)
+[![license](https://img.shields.io/npm/l/fise.svg)](https://github.com/anbkit/fise/blob/main/LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)](https://www.typescriptlang.org/)
+
 | AES (crypto-js) decrypt | ~0.4–0.9 ms |
 | WebCrypto AES-GCM decrypt | ~0.15–0.35 ms |
 

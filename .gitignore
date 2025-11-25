@@ -1,16 +1,15 @@
-# FISE - TypeScript Library Gitignore
-
-# Build
-/dist
+# Build output
+dist/
+coverage/
 
 # Dependencies
-/node_modules
+node_modules/
 
-# Environment
+# Env
 .env
 .env.*
 
-# NPM/Yarn/pnpm lockfiles
+# Lockfiles (not needed for a library)
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
