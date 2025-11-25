@@ -1,0 +1,28 @@
+{
+	"name": "fise",
+	"version": "0.1.0",
+	"description": "FISE – Fast Internet Secure Extensible: a keyless, rule-based envelope to protect API & frontend data.",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"test": "npm run build && node --test tests/**/*.mjs"
+	},
+	"keywords": [
+		"security",
+		"encryption",
+		"frontend",
+		"api",
+		"obfuscation",
+		"rule-engine",
+		"web",
+		"typescript"
+	],
+	"author": "",
+	"license": "MIT",
+	"devDependencies": {
+		"typescript": "^5.6.0",
+		"@types/node": "^22.13.5"
+	}
+}
