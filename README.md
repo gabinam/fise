@@ -96,27 +96,47 @@ yarn add fise
 
 ---
 
-## 🚀 Basic Usage (TypeScript)
-
-> Naming intentionally avoids “encrypt/decrypt” to prevent crypto confusion.
+## 🚀 Basic Usage
 
 ```ts
-import { encodeFise, decodeFise } from "fise";
+import { encryptFise, decryptFise, xorCipher, defaultRules } from "fise";
 
-const envelope = encodeFise({ hello: "world" }, {
-  method: "GET",
-  path: "/api/example",
-  sessionId: "abc-123",
-  // optional: ruleset selector / rotation config
-});
+// Encrypt
+const plaintext = "Hello, world!";
+const encrypted = encryptFise(plaintext, xorCipher, defaultRules);
 
-const data = decodeFise(envelope, {
-  method: "GET",
-  path: "/api/example",
-  sessionId: "abc-123",
-});
+// Decrypt
+const decrypted = decryptFise(encrypted, xorCipher, defaultRules);
 
-console.log(data); // { hello: "world" }
+console.log(decrypted); // "Hello, world!"
+```
+
+### With Options
+
+```ts
+import { encryptFise, decryptFise, xorCipher, defaultRules } from "fise";
+
+// Encrypt with custom salt length and timestamp
+const encrypted = encryptFise(
+  JSON.stringify({ hello: "world" }),
+  xorCipher,
+  defaultRules,
+  {
+    minSaltLength: 15,
+    maxSaltLength: 25,
+    timestampMinutes: 12345
+  }
+);
+
+// Decrypt (timestamp must match)
+const decrypted = decryptFise(
+  encrypted,
+  xorCipher,
+  defaultRules,
+  { timestampMinutes: 12345 }
+);
+
+console.log(JSON.parse(decrypted)); // { hello: "world" }
 ```
 
 > Server‑side may add **HMAC verification** on metadata (key stays on server) to reject tamper/replay. See `docs/SECURITY.md`.
@@ -144,7 +164,7 @@ Every stage is customizable; **rotation** is strongly recommended.
 - `docs/SPEC.md` — transformation spec (encode/decode symmetry)  
 - `docs/PERFORMANCE.md` — benchmarks & methodology  
 - `docs/SECURITY.md` — threat model & hardening guide  
-- `docs/WHITEPAPER.md` — full whitepaper (**v1.3**)
+- `docs/WHITEPAPER.md` — full whitepaper (**v1.0**)
 
 ---
 

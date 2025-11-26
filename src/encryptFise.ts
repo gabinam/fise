@@ -1,5 +1,5 @@
 import { randomSalt } from "./core/utils.js";
-import { EncryptOptions, FiseCipher, FiseContext, FiseRules } from "./types";
+import { EncryptOptions, FiseCipher, FiseContext, FiseRules } from "./types.js";
 
 /**
  * Encrypts plaintext using FISE transformation.
