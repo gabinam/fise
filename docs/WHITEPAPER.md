@@ -15,6 +15,8 @@ Modern web apps must render meaningful JSON on the client. HTTPS protects transp
 
 FISE complements, not replaces: TLS, authentication/authorization, backend rate-limits, or cryptography for secrets. It is best suited where **data itself is the asset** (e.g., curated POI, pricing, recommendations, AI metadata).
 
+FISE also supports **chunked, block-local pipelines** that enable **parallel encode/decode and streaming**, allowing clients to begin rendering **before** the full payload arrives.
+
 ---
 
 ## 1. Introduction
@@ -54,7 +56,8 @@ A few fetch calls and pagination often suffice to replicate valuable datasets at
 2. **Security through diversity** — each app/session/request may use a different rule-set.  
 3. **Infinite customization** — salts, offsets, metadata channels, ciphers (optional), assembly strategies.  
 4. **Semantic obfuscation** — protect *meaning*, not transport.  
-5. **Cheap to run, costly to reverse** — microsecond-level ops; no universal, protocol-level decoder.
+5. **Cheap to run, costly to reverse** — microsecond-level ops; no universal, protocol-level decoder.  
+6. **Streaming & Parallel-ready** — rules can be designed block-local, enabling **per-chunk** encode/decode and multi-core execution.
 
 ---
 
@@ -91,6 +94,11 @@ Interleave (data + salt + metadata [+ decoy]) into a **non-deterministic**, non-
 ### 4.6 Final Output
 A string/byte stream with **no fixed structure** shared across deployments. There is **no protocol-level universal decoder**; decoding requires the **matching rule-set**.
 
+### 4.7 Streaming/Framed Mode (optional)
+- Payload is split into **chunks**; each chunk carries **local metadata** (rule id, offsets) and optional **HMAC bindings** (server-side verify).  
+- Interleave/drift parameters derive from **(ruleset, chunkIndex, bindings)** → **no global dependency**, so chunks can be **encoded/decoded in parallel**.  
+- A **super-header** specifies framing (`version`, `nChunks`, `flags`).
+
 ---
 
 ## 5. Decoding
@@ -101,6 +109,8 @@ Given a matching rule-set:
 3. Remove salt/decoy; unwind transformations.  
 4. Reverse optional cipher stage.  
 5. Restore plaintext JSON for rendering.
+
+> **Framed mode.** The client may **decode chunk-by-chunk** (possibly in parallel workers) and **incrementally render** while the stream is arriving. If a rule needs cross-chunk state, carry a **small deterministic state** between chunks.
 
 ---
 
@@ -133,6 +143,11 @@ Attackers can run your app, hook decode functions, or dump plaintext **after** d
 ### 6.6 Rotation
 - **Per-session** or **per-request** rule-set rotation drastically increases reverse-engineering cost and decoder maintenance.
 
+### 6.7 Framed-mode Integrity
+- **Anti-reorder/tamper**: per-chunk **HMAC(meta \|\| chunkIndex \|\| bindings)** (server key only).  
+- **Anti-replay**: include request/session bindings and **timestamp buckets** in each chunk’s meta.  
+- **Boundary hiding**: optional decoy/padding and variable chunk sizes.
+
 > **Claim wording**: We do **not** claim “impossible to decode.” We claim **no protocol-level universal decoder**, and **significant per-target cost** under rotation, validation, and normalization-resistant channels.
 
 ---
@@ -164,6 +179,9 @@ Attackers can run your app, hook decode functions, or dump plaintext **after** d
 - Report **mean, stdev, P95/P99**.  
 - Measure **end-to-end** impact (server encode → client decode → render).
 
+### 8.3 Parallel & Streaming Benchmarks
+Report **TTFR** (time-to-first-render) and **throughput** with N workers (server Node workers; client Web Workers/WASM). Typical chunk sizes: **8–32 KB**. Compare streaming vs. non-streaming P95/P99.
+
 ---
 
 ## 9. Deployment Guidance
@@ -182,6 +200,11 @@ Attackers can run your app, hook decode functions, or dump plaintext **after** d
 ### 9.3 Observability
 - Log P50/P95 encode/decode, failure reasons, suspected tamper, rotation distribution.  
 - A/B toggles to quantify real-world scraping reduction.
+
+### 9.4 When to Use Framed Mode
+- Enable for payloads **≥ 100–200 KB** or when using optional WASM/cipher stages.  
+- Keep rules **block-local** (or carry **tiny state**) to preserve parallel decode.  
+- Validate against **Normalization Gauntlet** (gzip/brotli, Unicode NFC/NFKC, CDN).
 
 ---
 
@@ -220,7 +243,6 @@ Attackers can run your app, hook decode functions, or dump plaintext **after** d
 FISE reframes client-side protection as a **semantic, rule-based envelope**: keyless, rotating, and cheap to run. It **does not prevent** post-decode access, but it **raises attacker cost** substantially by eliminating a protocol-level universal decoder and coupling data to diversified, validated rule-sets. Used alongside TLS/AuthZ, rate-limits, and behavior defenses, FISE provides **practical defense-in-depth** for teams—especially small teams—whose competitive edge lies in the data they deliver to clients.
 
 ---
-
 
 ## 14. FISE Ecosystem: DSL, Rule VM, Registry & Builder  _(v1.0)_
 
@@ -292,7 +314,7 @@ pipeline:
 **Validation Rules**
 - Encode→Decode **property test** must hold (`decode(encode(x)) == x`) for random `x`.
 - Budget must pass; non-deterministic ops are rejected.
-- Normalization Gauntlet score ≥ policy threshold (see 14.5).
+- Normalization Gauntlet score ≥ policy threshold.
 
 ### 14.3 Rule VM (Sandbox Runtime)
 - **Isolation**: no DOM, no network/FS; limited memory; timeouts; op-count quotas.
@@ -305,14 +327,14 @@ pipeline:
 - **CI Checks**: linter, schema validate, property tests, fuzz, budget/time limit.
 - **Signatures**: rule packages signed (supply-chain integrity).
 - **Reputation**: usage telemetry (opt-in, anonymized), field failure rates, attacker breakage reports.
-- **Tags**: `mobile-fast`, `normalization-hard`, `emoji-free`, `zero-width-lite`, `wasm-fast`, etc.
+- **Tags**: `mobile-fast`, `normalization-hard`, `emoji-free`, `zero-width-lite`, `wasm-fast`, `framed`.
 
 ### 14.5 Normalization Gauntlet
 Automated suite to stress channels and layout:
 - **Compression**: gzip/brotli.
 - **Unicode**: NFC/NFKC normalization.
 - **Proxy/CDN**: header munging, whitespace squeeze, minify-like transforms.
-- **Transport quirks**: \r\n normalization, chunked boundaries.
+- **Transport quirks**: \\r\\n normalization, chunked boundaries.
 - **Score**: aggregate survival metrics + integrity checks; published in Registry.
 
 ### 14.6 Rule Builder (UI + AI)
@@ -336,5 +358,8 @@ Automated suite to stress channels and layout:
 - v0.2: JS VM + Registry alpha; Gauntlet CLI; 10 curated rules.
 - v0.3: WASM fast-path; AI rule-mutation loop; telemetry-backed fitness.
 - v1.0: Rule Builder stable; signed packages; enterprise rotation policies.
+
+### 14.10 FISE-Framed Profile
+A standard profile for chunked streaming: header (`version`, `ruleset`, `nChunks`), per-chunk meta (bindings, offsets, HMAC), recommended chunk sizes, and **Registry tags**: `framed`, `streaming-ready`, `mobile-fast`.
 
 > **Takeaway**: The ecosystem turns FISE from a library into a **platform**—safe programmability, verifiable quality, and community-driven diversity without exposing secrets on the client.
