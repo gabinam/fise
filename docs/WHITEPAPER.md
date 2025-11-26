@@ -177,6 +177,26 @@ Attackers can run your app, hook decode functions, or dump plaintext **after** d
 
 > **Claim wording**: We do **not** claim “impossible to decode.” We claim **no protocol-level universal decoder**, and **significant per-target cost** under rotation, validation, and normalization-resistant channels.
 
+### 6.10 Bidirectional (Two‑Way) Semantic Envelope
+
+**Goal.** Use the same per‑session rule family to protect **both directions**: server → client (response) **and** client → server (request), while keeping the hot path lightweight and parallelizable.
+
+**What it is.** A **two‑way semantic envelope**: the server injects a signed manifest at bootstrap; responses are wrapped (encode) and requests may optionally be wrapped (encode) by the client and **unwrapped** (decode) by the other side. The rule is **keyless** and rotates per session / time bucket; integrity of envelopes is enforced by a **server‑only HMAC** over metadata/bindings (not by a client secret).
+
+**Security properties (adjunct).**
+- **Confidentiality (semantic)**: hides *meaning* from naive scraping or middleboxes; not a replacement for TLS.
+- **Context binding**: envelopes are valid only under `(method|pathHash|sessionIdHash|tsBucket[|tokenHash*])`.
+- **Asymmetry**: attacker time‑to‑understand >> defender time‑to‑rotate.
+- **No client secret**: avoids key exposure in the browser; HMAC secrets live only on the server.
+
+**Performance envelope.**
+- Linear byte ops (O(n)), block‑local chunks, parallel decode via Workers/JSI/WASM.
+- Deterministic rule selection from `(seed, chunkIndex[, tsBucket])` within a **small warmed pool (3–8)**.
+
+**Recommended usage.**
+- **Responses (default)**: wrap JSON/media segments.
+- **Requests (optional)**: wrap **non‑secret** payloads (e.g., proprietary query/filters) to raise scraping cost; keep auth/CSRF unchanged.
+
 ---
 
 ## 7. Comparison
@@ -485,3 +505,55 @@ Temporal & distribution polymorphism increase:
 
 We call this **Semantic Protection with Temporal & Distribution Polymorphism (SP‑TDP)**—a defense model where attack cost scales roughly **per client / per session**, while defense cost remains **near‑constant**.
 
+---
+
+## 17. Portability & Platform Profiles
+
+FISE’s core is dependency‑free, linear byte/string transforms with optional WASM fast paths. This makes it portable across Web, Mobile, TV/IoT, Edge, and Native stacks. Below are **reference profiles** and packaging targets.
+
+### 17.1 API Surface (minimal)
+- `encode(input: Uint8Array, manifest: Manifest): Uint8Array`
+- `decode(input: Uint8Array, manifest: Manifest): Uint8Array`
+- `encodeFramed(stream, manifest): AsyncIterable<Chunk>`
+- `decodeFramed(stream, manifest, { maxWorkers? }): AsyncIterable<Uint8Array>`
+
+**Manifest (self‑contained).** `rulesetId`, `rule_map`, `seedHint`, `bindings`, `sig`, `version`.
+
+### 17.2 Web (Browser)
+- **Profiles:** `web-core` (JS), `web-wasm` (auto WASM), `media-segment-envelope`, `media-critical-fragment` (opt‑in).
+- **Parallelism:** Web Workers; transferable buffers.
+- **Media:** MSE append after unwrap; Image via Blob URL.
+- **Notes:** CSP nonce on bootstrap; Gauntlet (gzip/brotli/NFC/NFKC/CDN).
+
+### 17.3 Mobile (React Native)
+- **Profile:** `rn-jsi` (C++/Rust core via JSI) + JS shim.
+- **Parallelism:** thread pool inside JSI; avoid GC churn; preallocate buffers.
+- **Media:** decode per‑chunk then pass to native players or custom renderers.
+
+### 17.4 TV & IoT
+- **Webview targets (Tizen/webOS/Android TV/kiosk):** prefer `media-segment-envelope`; Workers if available; WASM optional; fallback scalar.
+- **Native set‑top/embedded:** static lib (C/C++/Rust); expose `encode/decode/decodeFramed`; 2–4 worker threads are sufficient for 2–4s segments.
+- **Metadata lanes:** prefer hex/base36 over zero‑width/emoji on firmware that normalizes content.
+
+### 17.5 Edge Runtimes (Cloudflare/Deno/Bun/Vercel Edge)
+- **Profile:** ESM build, no Node APIs required; Worker pool polyfill for concurrency or single‑thread fallback.
+- **Streaming:** handle `ReadableStream` with framed decode for low latency. 
+
+### 17.6 Native (iOS/Android/Desktop)
+- **iOS:** Swift Package + static C/C++/Rust core.
+- **Android:** AAR (Kotlin) with JNI to C/C++ core if needed.
+- **Desktop:** Rust/C++ lib, Node addons for Electron.
+- **Endianness:** operate on byte arrays (endian‑agnostic).
+
+### 17.7 Rule Budget & Compatibility
+- **Budget:** ≤ 2k ops/KB; P95 JSON ≤10 KB < 1 ms on mid‑range mobile; minimal allocations.
+- **Forbidden in hot path:** PBKDF, SHA‑heavy, big‑int crypto.
+- **Gauntlet:** test against gzip/brotli, Unicode normalization, proxy/CDN rewrites, and media pipelines.
+
+### 17.8 Packaging
+- **Web/Node:** ESM + CJS with d.ts; optional WASM.
+- **RN:** JSI module; pods/gradle config.
+- **Edge:** ESM only.
+- **Native:** static libs + thin adapters.
+
+**Claim wording.** By keeping cores simple and dependency‑free, FISE can be implemented consistently across platforms while preserving performance (parallel, block‑local) and robustness (Gauntlet‑tested lanes).

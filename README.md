@@ -84,6 +84,16 @@ See whitepaper §4.7, §6.7, §8.3, §9.4.
 
 ---
 
+## 🔁 Two‑Way Semantic Envelope
+
+FISE can protect **both directions** with the *same per‑session rule family*:
+
+- **Responses (default):** wrap JSON/media segments; client unwraps in parallel (Workers/JSI/WASM).
+- **Requests (optional):** wrap **non‑secret** payloads to obfuscate request semantics. Server verifies bindings (`method|pathHash|sessionIdHash|tsBucket[|tokenHash]`) and decodes.  
+  > Not a replacement for HTTPS/JWT/DPoP/CSRF — it’s an adjunct to raise attacker cost.
+
+---
+
 ## 🎬 Media Profiles
 
 ### 1) Segment‑Envelope (container‑preserving)
@@ -207,6 +217,29 @@ It is a **semantic protection layer** built for:
 - raising attacker cost  
 - avoiding universal decoders  
 - preventing naive dataset cloning  
+
+---
+
+## 🌐 Platform Profiles & Multi‑Language Support
+
+Core FISE is dependency‑free, linear byte/byte‑string ops (O(n)), making it portable across platforms and languages.
+
+### Profiles (reference)
+- **Web**: `web-core` (JS), `web-wasm` (optional fast‑path), `media-segment-envelope`, `media-critical-fragment` (opt‑in)
+- **React Native**: `rn-jsi` (C++/Rust core via JSI) + JS shim
+- **Edge Runtimes**: ESM build (CF Workers/Deno/Bun/Vercel Edge), single‑thread fallback ok
+- **TV/IoT**: WebView targets (Tizen/webOS/Android TV) or static libs for embedded
+- **Native**: iOS (Swift Package + C/C++/Rust), Android (AAR + JNI), desktop (C++/Rust, Electron addon)
+
+### Multi‑Language Roadmap
+- **JavaScript/TypeScript** (reference impl) ✅
+- **Rust** core + WASM bindings (optional fast‑path) 🛠
+- **Go** (cgo or pure) 🛠
+- **Swift/Kotlin** (mobile native) 🛠
+- **C/C++** static library (embedded/desktop) 🛠
+- **Python** bindings (for tooling/tests) 🛠
+
+All implementations must pass the **Golden Test Suite** (byte‑for‑byte parity) and the **Normalization Gauntlet** (gzip/brotli, NFC/NFKC, proxy/CDN rewrites).
 
 ---
 
