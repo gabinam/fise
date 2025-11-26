@@ -1,27 +1,35 @@
 import { FiseCipher } from "../types";
-import { toBase64, fromBase64 } from "./utils";
+import { toBase64, fromBase64 } from "./utils.js";
 
+/**
+ * XOR-based cipher implementation for FISE.
+ * 
+ * This cipher performs XOR operation between plaintext and salt characters,
+ * then base64-encodes the result. It's designed for speed, not cryptographic security.
+ * 
+ * Note: XOR is symmetric, so encrypt and decrypt use the same operation.
+ */
 export const xorCipher: FiseCipher = {
 	encrypt(plaintext, salt) {
 		const sLen = salt.length;
-		let out = "";
+		const result = new Array(plaintext.length);
 		for (let i = 0; i < plaintext.length; i++) {
 			const c = plaintext.charCodeAt(i);
 			const k = salt.charCodeAt(i % sLen);
-			out += String.fromCharCode(c ^ k);
+			result[i] = String.fromCharCode(c ^ k);
 		}
-		return toBase64(out);
+		return toBase64(result.join(""));
 	},
 
 	decrypt(cipherText, salt) {
 		const decoded = fromBase64(cipherText);
 		const sLen = salt.length;
-		let out = "";
+		const result = new Array(decoded.length);
 		for (let i = 0; i < decoded.length; i++) {
 			const c = decoded.charCodeAt(i);
 			const k = salt.charCodeAt(i % sLen);
-			out += String.fromCharCode(c ^ k);
+			result[i] = String.fromCharCode(c ^ k);
 		}
-		return out;
+		return result.join("");
 	}
 };
