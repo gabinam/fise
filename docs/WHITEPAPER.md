@@ -15,7 +15,7 @@ Modern web apps must render meaningful JSON on the client. HTTPS protects transp
 
 FISE complements, not replaces: TLS, authentication/authorization, backend rate-limits, or cryptography for secrets. It is best suited where **data itself is the asset** (e.g., curated POI, pricing, recommendations, AI metadata).
 
-FISE also supports **chunked, block-local pipelines** that enable **parallel encode/decode and streaming**, allowing clients to begin rendering **before** the full payload arrives. It generalizes to **media** (images/video) via framed, chunked pipelines that preserve codec/container compatibility while enabling parallel unwrap on the client.
+FISE supports **chunked, block-local pipelines** that enable **parallel encode/decode and streaming**, allowing clients to begin rendering **before** the full payload arrives. It generalizes to **media** (images/video) via framed, chunked pipelines that preserve codec/container compatibility while enabling parallel unwrap on the client. FISE further supports **per-session, server-injected rules**, avoiding static bundles and reducing reuse value of a captured decoder.
 
 ---
 
@@ -57,7 +57,8 @@ A few fetch calls and pagination often suffice to replicate valuable datasets at
 3. **Infinite customization** — salts, offsets, metadata channels, ciphers (optional), assembly strategies.  
 4. **Semantic obfuscation** — protect *meaning*, not transport.  
 5. **Cheap to run, costly to reverse** — microsecond-level ops; no protocol-level universal decoder.  
-6. **Streaming & Parallel-ready** — rules can be designed block-local, enabling **per-chunk** encode/decode and multi-core execution.
+6. **Streaming & Parallel-ready** — rules can be designed block-local, enabling **per-chunk** encode/decode and multi-core execution.  
+7. **Polymorphic-by-session** — rules can be **server-injected per session**, signed and short-lived, minimizing the reuse value of static reverse-engineering artifacts.
 
 ---
 
@@ -104,6 +105,16 @@ A string/byte stream with **no fixed structure** shared across deployments. Ther
 - Selection is **deterministic** from bindings/seed: `rule_idx = PRNG(seed, chunkIndex) mod K`.
 - A **super‑header** carries a compact `rule_map`; each chunk stores `rule_idx` instead of full ids.
 - Preserve **block‑local semantics** so chunks decode independently; carry only **tiny deterministic state** if required.
+
+### 4.9 Server‑Injected Bootstrap (optional)
+
+**Goal:** deliver a **fresh rule** per session/request without changing the long‑cached runtime.
+
+- **Bootstrap snippet (HTML/SSR)**: server renders a tiny `<script type="module" nonce=...>` containing a compact **rule manifest** (e.g., DSL bytecode + metadata) and calls the stable **FISE runtime** to activate it.
+- **Signature**: include `sig = HMAC(serverKey, bytecode || manifest || bindings)`; the runtime verifies **before** enabling the rule.
+- **Bindings**: `(method|pathHash|sessionId|tsBucket)` may be embedded to tie the rule to its context.
+- **Caching**: mark bootstrap **no‑store**; keep `fise-runtime.min.js` immutable and SRI‑pinned.
+- **Deterministic selection**: the per‑session rule can still define **heterogeneous per‑chunk** logic (see §4.8) using a small bounded pool.
 
 ---
 
@@ -158,6 +169,11 @@ Attackers can run your app, hook decode functions, or dump plaintext **after** d
 - Limit pool size (e.g., 3–8) to bound code/metadata overhead and improve worker/WASM cache locality.
 - Include `rule_idx` and `chunkIndex` under **server HMAC** to prevent splice/reorder attacks.
 - Track field reliability per `rule_idx`; rotate out rules with poor normalization fitness.
+
+### 6.9 Server‑Injected Rules: Signature & Localized Fallout
+- **Trust on first use**: the runtime **rejects** unsigned/invalid manifests; use CSP nonces to restrict inline code.
+- **Localized leak**: compromise of one session’s rule has **limited reuse**; subsequent sessions rotate.
+- **Replay/tamper**: include `(sessionId|tsBucket|pathHash)` in the signed fields; per‑chunk HMAC continues to guard payload integrity.
 
 > **Claim wording**: We do **not** claim “impossible to decode.” We claim **no protocol-level universal decoder**, and **significant per-target cost** under rotation, validation, and normalization-resistant channels.
 
@@ -223,6 +239,11 @@ Report **TTFR** (time-to-first-render) and **throughput** with N workers (server
 - **CDN/Optimizer**: disable transforms (recompress/minify) on enveloped media; validate via Gauntlet.
 - **Chunk sizes**: 128–512 KB per segment chunk on web; schedule workers to group identical `rule_idx` for cache locality.
 
+### 9.6 Bootstrap Patterns (Web & RN)
+- **Web (SSR/SPA)**: render a per‑session **bootstrap** with CSP nonce; load `fise-runtime.min.js` (immutable). Verify signature, then initialize workers and start framed decoding.
+- **React Native**: fetch `GET /fise/rule?sid=...` for the manifest; verify signature; pass to native/JSI runtime.
+- **CDN**: do **not** cache the bootstrap; cache the runtime and enveloped payloads normally.
+
 ---
 
 ## 10. Use Cases
@@ -262,7 +283,7 @@ FISE reframes client-side protection as a **semantic, rule-based envelope**: key
 
 ---
 
-## 14. FISE Ecosystem: DSL, Rule VM, Registry & Builder  _(v1.0)_
+## 14. FISE Ecosystem: DSL, Rule VM, Registry & Builder
 
 This section defines a path to unlock **community-driven rule diversity** and safe, deterministic execution.
 
@@ -274,107 +295,45 @@ This section defines a path to unlock **community-driven rule diversity** and sa
 - **No Secrets in Client**: binding and rotation **do not expose** server keys; HMAC verification remains server-only.
 
 ### 14.2 FISE DSL — v0.1 (Minimum Spec)
-A compact, declarative language describing **encode/decode pipelines**.
-
-**Design Principles**
-- **Declarative** operators; no arbitrary IO/network/DOM access.
-- **Deterministic** evaluation; pseudo-randomness only via exposed bindings/seed.
-- **Budgeted** execution: `max_ops`, `max_ms`, `max_bytes` enforced by VM.
-- **Symmetry**: every encode op has a defined decode inverse (or is a no-op at decode point).
-
-**YAML Schema (illustrative)**
-```yaml
-version: 1
-name: "interleave-emoji-A1"
-ruleset_id: "A1"
-budget: { max_ops: 1000000, max_ms: 2, max_bytes: 131072 }
-seed:
-  source: "server-seed|csprng|timestamp-bucket"
-  allow_client_variation: false
-binding:
-  include: ["method", "pathHash", "sessionHash", "tsBucket"]
-meta:
-  channels:
-    - { id: "meta62", format: "base62", include: ["ruleset_id","salt.len","binding.*"] }
-pipeline:
-  - op: "data.stringify"   # ensure JSON string
-  - op: "entropy.salt"     # produce salt with {len:{min,max}, charset:"base64url"}
-    args: { len: { min: 12, max: 28 }, charset: "base64url" }
-    out: "salt1"
-  - op: "meta.pack"
-    args: { from: ["ruleset_id","binding.*","salt1.len"], to: "meta62" }
-  - op: "data.interleave"
-    args: { step: 3, salt: "$salt1", drift: "codeParity%3" }
-    in: "input"  # JSON string
-    out: "stage1"
-  - op: "meta.embed"
-    args: { meta: "$meta62", channel: "emoji", spread: "prime(7)" }
-    in: "stage1"
-    out: "stage2"
-  - op: "emit"
-    args: { tag: "FISE1", meta: "$meta62", payload: "$stage2" }
-```
-
-**Core Operators v0.1**
-- `data.stringify`, `data.parse`
-- `data.interleave(step, salt, drift)` / `data.deinterleave(step, drift)`
-- `data.scatter(map)`, `data.blockShuffle(seed)`
-- `entropy.salt(len, charset)`
-- `meta.pack(format, include)`, `meta.unpack`
-- `meta.embed(channel, spread)`, `meta.extract(channel)`
-- `codec.xor(keyless)`, `codec.aes(optional)` *(encode-side only; decode requires symmetric config but not client secrets)*
-- `emit(tag, metaRef, payloadRef)` / `read(tag)`
-
-**Bindings (read-only)**
-- `method`, `path`, `pathHash`, `queryHash`, `sessionHash`, `tsBucket`, `ruleset_id`, optional `serverSeedId`
-- **No** secrets; just identifiers/hashes enabling request/session binding.
-
-**Validation Rules**
-- Encode→Decode **property test** must hold (`decode(encode(x)) == x`) for random `x`.
-- Budget must pass; non-deterministic ops are rejected.
-- Normalization Gauntlet score ≥ policy threshold.
+- Declarative operators; no arbitrary IO/network/DOM access.  
+- Deterministic evaluation; pseudo-randomness only via allowed bindings/seed.  
+- Budgeted execution: `max_ops`, `max_ms`, `max_bytes`.  
+- Symmetry: every encode op has a decode inverse.
 
 ### 14.3 Rule VM (Sandbox Runtime)
-- **Isolation**: no DOM, no network/FS; limited memory; timeouts; op-count quotas.
-- **Determinism**: frozen builtins; seeded PRNG derived from allowed bindings/seed only.
-- **Backends**: JS interpreter first; **WASM** JIT for fast path (optional).
-- **Instrumentation**: metrics (ops, ms, bytes), decode failures, normalization outcomes.
+- Isolation: no DOM, no network/FS; limited memory; timeouts; op-count quotas.  
+- Determinism: frozen builtins; seeded PRNG derived from bindings/seed only.  
+- Backends: JS interpreter first; optional **WASM** fast path.  
+- Instrumentation: metrics (ops, ms, bytes), decode failures, normalization outcomes.
 
 ### 14.4 Registry (Open, with CI)
-- **Metadata**: name, author, semver, ops used, budget, **Gauntlet score**, P95 decode, payload delta.
-- **CI Checks**: linter, schema validate, property tests, fuzz, budget/time limit.
-- **Signatures**: rule packages signed (supply-chain integrity).
-- **Reputation**: usage telemetry (opt-in, anonymized), field failure rates, attacker breakage reports.
-- **Tags**: `mobile-fast`, `normalization-hard`, `emoji-free`, `zero-width-lite`, `wasm-fast`, `framed`.
+- Metadata: name, author, semver, ops used, budget, **Gauntlet score**, P95 decode, payload delta.  
+- CI: linter, schema validate, property tests, fuzz, budget/time.  
+- Signatures: rule packages signed (supply-chain).  
+- Reputation: anonymized usage telemetry (opt‑in), field failure rates, attacker breakage reports.  
+- Tags: `mobile-fast`, `normalization-hard`, `emoji-free`, `zero-width-lite`, `wasm-fast`, `framed`.
 
 ### 14.5 Normalization Gauntlet
-Automated suite to stress channels and layout:
-- **Compression**: gzip/brotli.
-- **Unicode**: NFC/NFKC normalization.
-- **Proxy/CDN**: header munging, whitespace squeeze, minify-like transforms.
-- **Transport quirks**: \\r\\n normalization, chunked boundaries.
-- **Score**: aggregate survival metrics + integrity checks; published in Registry.
+- Compression: gzip/brotli; Unicode: NFC/NFKC; Proxy/CDN quirks.  
+- Score: survival metrics + integrity; published in Registry.
 
 ### 14.6 Rule Builder (UI + AI)
-- **Block Editor**: drag/drop operators; live preview encode/decode on sample JSON (and media headers).
-- **Constraints**: budget sliders, mobile target (P95 ms), allowed channels.
-- **Gauntlet in the loop**: run and show score immediately.
-- **AI Copilot**: prompt to generate variants under constraints (*e.g.*, “+10% gauntlet score, P95 < 1 ms”).
-- **Export Artifacts**: `ruleset.fise.yml`, generated JS/WASM, checksums, Registry manifest.
+- Block editor; live preview; budget sliders; Gauntlet-in-the-loop.  
+- AI copilot for mutation (“+10% gauntlet score, P95 < 1 ms”).  
+- **Bootstrap generator**: export per‑session rule manifest (bytecode + signature fields).
 
 ### 14.7 Distribution & Rotation
-- **Polymorphic-by-build**: code generator emits different concrete code per build.
-- **Rotation Policies**: per-session/per-request; server selects `ruleset_id` (no secrets).
-- **Fallback**: multi-channel metadata; decode can attempt multiple lanes.
+- Polymorphic-by-build codegen variants; per-session/per-request rotation.  
+- Fallback: multi-channel metadata; decode can attempt multiple lanes.
 
 ### 14.8 Governance
-- **Policy Docs**: naming, claims (no crypto-replacement), disclosure of limits (Attacker-in-the-browser).
-- **Reviewers**: security + performance maintainers.
-- **Bounties**: reward high Gauntlet/real-world fitness; hall-of-fame & disclosure program.
+- Claims policy; disclosure of limits (AitB).  
+- Reviewer roles (security/perf).  
+- Bounties/hall‑of‑fame.
 
 ### 14.9 Roadmap (Ecosystem)
 - v0.2: JS VM + Registry alpha; Gauntlet CLI; 10 curated rules.
-- v0.3: WASM fast-path; AI rule-mutation loop; telemetry-backed fitness.
+- v0.3: WASM fast path; AI mutation loop; telemetry-backed fitness.
 - v1.0: Rule Builder stable; signed packages; enterprise rotation policies.
 
 ---
@@ -401,3 +360,93 @@ Automated suite to stress channels and layout:
 
 ### 15.5 Metrics
 - **TTFR** improvement vs. baseline, **throughput** with N workers, **P95/P99** decode, **decoder breakage rate** under rotation.
+
+
+## 16. Temporal Polymorphism & Rule Injection Diversity
+
+Modern large‑scale scrapers rely on two assumptions: (1) the protection mechanism is **stable over time**, and (2) it is **uniform across clients**. FISE invalidates both by introducing **temporal polymorphism** and **distribution‑level variability**: the effective rule‑set for each client (and potentially each request) is **inlined at bootstrap time** and can be **mutated/rotated** with negligible operational cost. This unpredictability raises both **attack construction** and **attack maintenance** costs.
+
+### 16.1 Client‑Side Rule Injection (Per‑Client Distribution)
+
+On each initial HTML load, the app may embed the **effective decode rule‑set** for that session. The rule need not be static, global, or shared.
+
+**Injection vectors (non‑exhaustive):**
+- Inline `<script type="module">` with CSP nonce (short‑lived)
+- External bundles (per‑build polymorphism)
+- Dynamic `import()` loaders
+- Service Worker bootstrap responses
+- Inlined bootstrap JSON (`window.__FISE__`)
+- CSS‑encoded lanes (zero‑width / emoji / base62)
+- WASM modules with partial decode logic
+- `<meta>`‑embedded metadata
+- `Link: rel=prefetch` headers
+- First‑call bootstrap API responses
+
+Apps may **select/rotate injection paths** at runtime. Thus, even within the same ruleset family, each client can receive a **structurally different** decode pipeline.
+
+**Implication.** There is no single reliable “place” to locate the decoder; reverse‑engineering must begin **from scratch** for each injection variant.
+
+### 16.2 Distribution Polymorphism (Diversity Across Clients)
+
+Since rules are injected at bootstrap, delivery can vary **per‑build**, **per‑client**, **per‑session**, and even **per‑request** (for sensitive endpoints). The rule itself may be:
+- injected as a concrete pipeline,
+- generated via DSL at build‑time,
+- mutated by polymorphic codegen, or
+- selected from a pool of community salt packs.
+
+This yields a many‑to‑many mapping:
+```
+Client 1 → A₁
+Client 2 → A₂
+Client 3 → B₁
+Client 4 → C₃
+...
+```
+Even within the same family (A, B, C), **materialization differs** per client.
+
+**Implication.** Attackers cannot prepare a universal, reusable decoder. At best they reverse one session, which becomes invalid after rotation.
+
+### 16.3 Temporal Rule Rotation (Maintenance Asymmetry)
+
+Breaking a pipeline requires:
+1) locating the injected rule, 2) understanding the pipeline, 3) reconstructing a decoder, 4) validating, 5) automating. This can take hours per pipeline.
+
+Defenders can rotate **per deployment / per session / per time bucket / per request** with near‑zero cost.
+
+**Asymmetry.**
+```
+Attacker time‑to‑understand  >>  Defender time‑to‑rotate
+```
+Thus, even successful decoding is **short‑lived** and **non‑transferable**.
+
+> **Claim wording:** FISE does **not** prevent decoding; it aims to ensure any successful decoding is **short‑lived and non‑reusable**.
+
+### 16.4 Zero‑Reuse Reverse Engineering
+
+Traditional anti‑scrape fails because one break scales: same signatures, payload formats, and schemas. FISE breaks that model:
+- Decoding logic is **session‑local**.
+- Pipeline structure is **instance‑specific**.
+- Injection vectors are **variable**.
+- Offsets/metadata lanes can differ **per request**.
+- Each instance **decays quickly** under rotation.
+
+**Result.** Reverse‑engineering may be feasible but **economically useless** beyond the original session.
+
+**Principle:** *No protocol‑level universal decoder, no reusable exploit.*
+
+### 16.5 Security Implications
+
+Temporal & distribution polymorphism increase:
+- attacker cost (initial & ongoing),
+- attacker uncertainty,
+- scraping maintenance overhead,
+- difficulty of automation,
+- resistance to pattern matching (including AI‑assisted).
+
+…while maintaining:
+- microsecond‑level overhead,
+- no client‑side secrets,
+- straightforward integration for small/medium teams.
+
+We call this **Semantic Protection with Temporal & Distribution Polymorphism (SP‑TDP)**—a defense model where attack cost scales roughly **per client / per session**, while defense cost remains **near‑constant**.
+
