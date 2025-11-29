@@ -181,6 +181,7 @@ Every stage is customizable; **rotation** is strongly recommended.
 -   `docs/PERFORMANCE.md` — benchmarks & methodology
 -   `docs/SECURITY.md` — threat model & hardening guide
 -   `docs/WHITEPAPER.md` — full whitepaper (**v1.0**)
+-   `docs/PLATFORM_SUPPORT.md` — platform support and compatibility guide
 
 **Examples & Demos:**
 -   **[FISE Examples Repository](https://github.com/anbkit/fise-examples)** — real-world examples, demos, and production-ready code
@@ -240,6 +241,8 @@ Core FISE is dependency‑free, linear byte/byte‑string ops (O(n)), making it 
 -   Fast and lightweight
 
 All implementations must maintain **byte-for-byte compatibility** with the reference implementation to ensure rules work across all platforms. See the [**Golden Test Suite**](./docs/WHITEPAPER.md) requirements.
+
+> 📖 For detailed platform support information, see [**Platform Support Guide**](./docs/PLATFORM_SUPPORT.md)
 
 ### 🧩 Community Rule Ecosystem (Planned)
 
