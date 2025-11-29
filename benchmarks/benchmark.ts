@@ -7,9 +7,9 @@
  * and provides detailed statistics.
  */
 
-import { encryptFise, decryptFise } from "./encryptFise.js";
-import { xorCipher } from "./core/xorCipher.js";
-import { defaultRules } from "./rules/defaultRules.js";
+import { encryptFise, decryptFise } from "../src/encryptFise.js";
+import { xorCipher } from "../src/core/xorCipher.js";
+import { defaultRules } from "../src/rules/defaultRules.js";
 import { writeFileSync, readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -143,11 +143,11 @@ function printResults(results: BenchmarkResult[]): void {
 	for (const r of results) {
 		console.log(
 			`${formatBytes(r.size).padEnd(12)} ` +
-				`${formatNumber(r.encrypt.mean).padEnd(10)}ms ` +
-				`${formatNumber(r.encrypt.median).padEnd(10)}ms ` +
-				`${formatNumber(r.encrypt.p95).padEnd(10)}ms ` +
-				`${formatNumber(r.encrypt.p99).padEnd(10)}ms ` +
-				`${formatNumber(r.throughput.encrypt).padEnd(12)} KB/s`
+			`${formatNumber(r.encrypt.mean).padEnd(10)}ms ` +
+			`${formatNumber(r.encrypt.median).padEnd(10)}ms ` +
+			`${formatNumber(r.encrypt.p95).padEnd(10)}ms ` +
+			`${formatNumber(r.encrypt.p99).padEnd(10)}ms ` +
+			`${formatNumber(r.throughput.encrypt).padEnd(12)} KB/s`
 		);
 	}
 
@@ -160,11 +160,11 @@ function printResults(results: BenchmarkResult[]): void {
 	for (const r of results) {
 		console.log(
 			`${formatBytes(r.size).padEnd(12)} ` +
-				`${formatNumber(r.decrypt.mean).padEnd(10)}ms ` +
-				`${formatNumber(r.decrypt.median).padEnd(10)}ms ` +
-				`${formatNumber(r.decrypt.p95).padEnd(10)}ms ` +
-				`${formatNumber(r.decrypt.p99).padEnd(10)}ms ` +
-				`${formatNumber(r.throughput.decrypt).padEnd(12)} KB/s`
+			`${formatNumber(r.decrypt.mean).padEnd(10)}ms ` +
+			`${formatNumber(r.decrypt.median).padEnd(10)}ms ` +
+			`${formatNumber(r.decrypt.p95).padEnd(10)}ms ` +
+			`${formatNumber(r.decrypt.p99).padEnd(10)}ms ` +
+			`${formatNumber(r.throughput.decrypt).padEnd(12)} KB/s`
 		);
 	}
 
@@ -173,13 +173,13 @@ function printResults(results: BenchmarkResult[]): void {
 	console.log("=".repeat(80));
 	console.log(
 		`Smallest payload (${formatBytes(results[0]?.size || 0)}): ` +
-			`Encrypt ${formatNumber(results[0]?.encrypt.mean || 0)}ms, ` +
-			`Decrypt ${formatNumber(results[0]?.decrypt.mean || 0)}ms`
+		`Encrypt ${formatNumber(results[0]?.encrypt.mean || 0)}ms, ` +
+		`Decrypt ${formatNumber(results[0]?.decrypt.mean || 0)}ms`
 	);
 	console.log(
 		`Largest payload (${formatBytes(results[results.length - 1]?.size || 0)}): ` +
-			`Encrypt ${formatNumber(results[results.length - 1]?.encrypt.mean || 0)}ms, ` +
-			`Decrypt ${formatNumber(results[results.length - 1]?.decrypt.mean || 0)}ms`
+		`Encrypt ${formatNumber(results[results.length - 1]?.encrypt.mean || 0)}ms, ` +
+		`Decrypt ${formatNumber(results[results.length - 1]?.decrypt.mean || 0)}ms`
 	);
 	console.log("=".repeat(80) + "\n");
 }

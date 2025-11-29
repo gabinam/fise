@@ -558,6 +558,7 @@ offset: (c, ctx) => (c.length ^ ctx.timestamp) % c.length
 
 ## 📚 Next Steps
 
+- **[View FISE Examples Repository](https://github.com/anbkit/fise-examples)** — see real-world examples, demos, and production-ready code
 - Read [WHITEPAPER.md](./WHITEPAPER.md) for deeper understanding
 - Check [SECURITY.md](./SECURITY.md) for security considerations
 - Explore [USE_CASES.md](./USE_CASES.md) for real-world scenarios

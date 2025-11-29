@@ -1,6 +1,6 @@
-# FISE Whitepaper (v1.0)
+# FISE Engineering Whitepaper (v1.0)
 
-**Fast Internet Secure Extensible — a rule-based, keyless, high-performance _semantic envelope_ for Web/API data**
+**Fast Internet Secure Extensible — a rule-based, keyless, high-performance _semantic envelope_ for Web/API & Media data.**
 
 > **Positioning (TL;DR)**  
 > FISE is **not cryptography** and does not replace TLS/AuthZ. It is a **semantic obfuscation layer** that raises the _cost and time_ of scraping and reverse-engineering client-visible data, while keeping runtime overhead extremely low.
@@ -13,9 +13,9 @@ Modern web apps must render meaningful JSON on the client. HTTPS protects transp
 
 **Design principle:** Rather than distributing static client keys, FISE injects **shared, ephemeral rules** ("rules-as-code") that are bound to context and rotate quickly; any decoder inferred from one session does **not** generalize to others or future windows.
 
-**FISE** proposes a **rule-based, keyless transformation pipeline** that "wraps" responses in a polymorphic **semantic envelope**. Each application (and optionally each session/request) uses a unique, rotating rule-set to assemble salt, offsets, and metadata into a structure with **no protocol-level universal decoder**—attackers must tailor a decoder per pipeline. FISE focuses on _raising attacker cost_ (not secrecy), with **microsecond-level** encode/decode on commodity devices.
+**FISE** proposes a **rule-based, keyless transformation pipeline** that "wraps" responses in a polymorphic **semantic envelope**. Each application (and optionally each session/request) uses a unique, rotating rule set to assemble salt, offsets, and metadata into a structure with **no protocol-level universal decoder**—attackers must tailor a decoder per pipeline. FISE focuses on _raising attacker cost_ (not secrecy), with **microsecond-level** encode/decode on commodity devices.
 
-FISE complements, not replaces: TLS, authentication/authorization, backend rate-limits, or cryptography for secrets. It is best suited where **data itself is the asset** (e.g., curated POI, pricing, recommendations, AI metadata).
+FISE complements—not replaces—TLS, authentication/authorization, backend rate-limits, and cryptography for secrets. It is best suited where **data itself is the asset** (e.g., curated POI, pricing, recommendations, AI metadata).
 
 FISE supports **chunked, block-local pipelines** that enable **parallel encode/decode and streaming**, allowing clients to begin rendering **before** the full payload arrives. It generalizes to **media** (images/video) via framed, chunked pipelines that preserve codec/container compatibility while enabling parallel unwrap on the client. FISE further supports **per-session, server-injected rules**, avoiding static bundles and reducing reuse value of a captured decoder.
 
@@ -58,23 +58,101 @@ A few fetch calls and pagination often suffice to replicate valuable datasets at
 
 ## 3. Design Philosophy
 
-**Core principle:** Rather than distributing static client keys, FISE injects **shared, ephemeral rules** ("rules-as-code") that are bound to context and rotate quickly. Any decoder inferred from one session does **not** generalize to others or future windows, creating economic impossibility for automated attacks at scale.
+**Core principle:** Rather than distributing static client keys, FISE injects **shared, ephemeral rules** ("rules-as-code") that are bound to context and rotate quickly. Any decoder inferred from one session does **not** generalize to others or future windows, making automated attacks at scale economically unattractive and hard to maintain.
 
 This yields the following properties:
 
 1. **Keyless by design** — no static client key to steal.
-2. **Security through diversity** — each app/session/request may use a different rule-set.
+2. **Security through diversity** — each app/session/request may use a different rule set.
 3. **Infinite customization** — salts, offsets, metadata channels, ciphers (optional), assembly strategies.
 4. **Semantic obfuscation** — protect _meaning_, not transport.
 5. **Cheap to run, costly to reverse** — microsecond-level ops; no protocol-level universal decoder.
 6. **Streaming & Parallel-ready** — rules can be designed block-local, enabling **per-chunk** encode/decode and multi-core execution.
 7. **Polymorphic-by-session** — rules can be **server-injected per session**, signed and short-lived, minimizing the reuse value of static reverse-engineering artifacts.
 
+### §3.1 Principle: Simple Local Ops → Emergent Complexity
+
+**Core spirit.** Each FISE *rule* is built from small, linear, easy-to-reason-about operations. When these operations are **bound to context** (bindings) and **composed** across chunks/sessions/time, they yield **highly complex envelopes** from an attacker’s point of view.
+
+**Simple primitives (local ops):**
+
+- `offset()` — decides **where** to place/read metadata (spatial diversity).
+- `encodeLength()/decodeLength()` — decides **how** length is represented (format diversity).
+- `extractSalt()/stripSalt()` (optional) — decides **how** salt/meta is arranged (structural diversity).
+- A **default XOR-style O(n) transform** in the reference profile (pluggable and optional).
+
+None of these are mathematically exotic; they are simple, local operations over bytes.
+
+---
+
+#### How simple ops create emergent complexity
+
+1. **Context linkage.**  
+   Each step can be seeded by `rulesetId`, `chunkIndex`, `sessionIdHash`, `tsBucket`, etc. The same formulas produce **different concrete results** under different bindings, even if the rule code is identical.
+
+2. **Multi-lane metadata.**  
+   Salt/length/offsets can be spread across multiple “lanes” (base36/62, emoji, zero-width, parity/XOR lanes), so there is **no protocol-level fixed format** that holds across deployments or even across sessions.
+
+3. **Flexible meta-space.**  
+   Implementations may allocate **M** bytes as the search space for `encodeLength()` and related metadata:
+
+   -- Even if **offset** and **saltLen** partially leak, an attacker still has to reason about **which positions** in those **M** bytes actually encode length and **how** they encode it. The difficulty scales with **(position choices × representation variants)**, while legitimate decoding remains **O(1)/O(n)** (read a fixed window, apply a small function).
+
+   - The difficulty scales with **(position choices × representation variants)**, while legitimate decoding remains **O(1)/O(n)** (read a fixed window, apply a small function).
+
+4. **Per-chunk heterogeneity.**  
+   A small pool (e.g. 3–8) of rules can be selected per chunk, deterministically from a seed/bindings. At the system level, complexity grows roughly as **H^C** for **H** rules over **C** chunks: a single response may already exercise a large portion of the rule space.
+
+---
+
+#### Back-of-the-envelope intuition (illustrative only)
+
+Let:
+
+- **M** = number of bytes available as a “length window” for `encodeLength()`,  
+- **k** = number of positions in that window that are actually meaningful under a given rule,  
+- **H** = size of the per-chunk rule pool,  
+- **C** = number of chunks in a response.
+
+A very rough upper-bound for structural configurations is:
+
+- window choices ≈ `C(M, k)` × (*representation variants*), and  
+- per-chunk rule assignment ≈ `H^C`.
+
+So the effective search space behaves like:
+
+> **`H^C × C(M, k)` (× representation variants)**
+
+from the attacker’s perspective, while each local step for a legitimate client is still a small, linear-time operation (add/mul/mod/XOR, simple base conversions, fixed-window reads).
+
+This is not a formal security bound, but an intuition: **outputs can appear complex and hard to reuse at scale without the rule**, even though each primitive is simple.
+
+---
+
+#### Deliberate flexibility
+
+Deployers can:
+
+- **widen or narrow** the meta-space **M**,
+- change which lanes carry length/salt/offset information,
+- adjust **rotation cadence** (per deployment, per session, per time bucket),
+- choose whether to use the default XOR transform, no extra transform, or a custom cipher.
+
+As these parameters change, the attacker’s **rule inference/search space** grows, while runtime for honest clients remains cheap and linear.
+
+The reference implementation ships with a **fast default XOR-style O(n) transform**. When needed, a deployment can plug in a custom cipher via a simple interface, for example:
+
+```ts
+interface FiseCipher {
+  encrypt(plainData, salt);
+  decrypt(cipherData, salt);
+}
+```
 ---
 
 ## 4. The FISE Transformation Pipeline
 
-A concrete deployment chooses and **rotates** among multiple rule-sets. A typical encode flow:
+A concrete deployment chooses and **rotates** among multiple rule sets. A typical encode flow:
 
 ### 4.1 Salt & Entropy
 
@@ -84,7 +162,7 @@ A concrete deployment chooses and **rotates** among multiple rule-sets. A typica
 
 ### 4.2 Metadata Encoding
 
-Encode salt length, offsets, rule-set id, optional request/session binding tags via one or more channels:
+Encode salt length, offsets, rulesetId, optional request/session binding tags via one or more channels:
 
 -   base36/base62/hex
 -   emoji lanes
@@ -100,8 +178,8 @@ Encode salt length, offsets, rule-set id, optional request/session binding tags 
 
 Offsets decide where to place metadata, salt, and decoy. They may derive from:
 
--   rule-set id
--   timestamp buckets
+-   rulesetId
+-   time buckets
 -   prime sequences / rolling checksums
 -   request/session bindings
 
@@ -111,12 +189,12 @@ Interleave (data + salt + metadata [+ decoy]) into a **non-deterministic**, non-
 
 ### 4.6 Final Output
 
-A string/byte stream with **no fixed structure** shared across deployments. There is **no protocol-level universal decoder**; decoding requires the **matching rule-set**.
+A string/byte stream with **no fixed structure** shared across deployments. There is **no protocol-level universal decoder**; decoding requires the **matching rule set**.
 
 ### 4.7 Streaming/Framed Mode (optional)
 
--   Payload is split into **chunks**; each chunk carries **local metadata** (rule id, offsets) and optional **HMAC bindings** (server-side verify).
--   Interleave/drift parameters derive from **(ruleset, chunkIndex, bindings)** → **no global dependency**, so chunks can be **encoded/decoded in parallel**.
+-   Payload is split into **chunks**; each chunk carries **local metadata** (rulesetId, offsets) and optional **HMAC bindings** (server-side verify).
+-   Interleave/drift parameters derive from **(rulesetId, chunkIndex, bindings)** → **no global dependency**, so chunks can be **encoded/decoded in parallel**.
 -   A **super-header** specifies framing (`version`, `nChunks`, `flags`).
 
 ### 4.8 Heterogeneous Per‑Chunk Rules (optional)
@@ -132,7 +210,7 @@ A string/byte stream with **no fixed structure** shared across deployments. Ther
 
 -   **Bootstrap snippet (HTML/SSR)**: server renders a tiny `<script type="module" nonce=...>` containing a compact **rule manifest** (e.g., DSL bytecode + metadata) and calls the stable **FISE runtime** to activate it.
 -   **Signature**: include `sig = HMAC(serverKey, bytecode || manifest || bindings)`; the runtime verifies **before** enabling the rule.
--   **Bindings**: `(method|pathHash|sessionId|tsBucket)` may be embedded to tie the rule to its context.
+-   **Bindings**: `(method|pathHash|sessionIdHash|tsBucket)` may be embedded to tie the rule to its context.
 -   **Caching**: mark bootstrap **no‑store**; keep `fise-runtime.min.js` immutable and SRI‑pinned.
 -   **Deterministic selection**: the per‑session rule can still define **heterogeneous per‑chunk** logic (see §4.8) using a small bounded pool.
 
@@ -140,7 +218,7 @@ A string/byte stream with **no fixed structure** shared across deployments. Ther
 
 ## 5. Decoding
 
-Given a matching rule-set:
+Given a matching rule set:
 
 1. Extract/locate metadata via channel heuristics.
 2. Recover salt length & offsets; validate request/session bindings.
@@ -174,9 +252,9 @@ Attackers can run your app, hook decode functions, or dump plaintext **after** d
 
 ### 6.4 Replay & Tamper (recommended hardening)
 
--   **Request/Session binding**: include a hash of `(method|path|query|sessionId|tsBucket)` in metadata.
+-   **Request/Session binding**: include a hash of `(method|pathHash|queryHash|sessionIdHash|tsBucket)` in metadata.
 -   **Server-side verification**: HMAC (server key only) covering metadata & bindings to reject altered or stale envelopes.
--   **Short-lived validity**: timestamp buckets + skew windows.
+-   **Short-lived validity**: time buckets + skew windows.
 
 ### 6.5 Normalization resistance
 
@@ -185,12 +263,12 @@ Attackers can run your app, hook decode functions, or dump plaintext **after** d
 
 ### 6.6 Rotation
 
--   **Per-session** or **per-request** rule-set rotation drastically increases reverse-engineering cost and decoder maintenance.
+-   **Per-session** or **per-request** rule set rotation drastically increases reverse-engineering cost and decoder maintenance.
 
 ### 6.7 Framed-mode Integrity
 
 -   **Anti-reorder/tamper**: per-chunk **HMAC(meta \|\| chunkIndex \|\| bindings)** (server key only).
--   **Anti-replay**: include request/session bindings and **timestamp buckets** in each chunk’s meta.
+-   **Anti-replay**: include request/session bindings and **time buckets** in each chunk’s meta.
 -   **Boundary hiding**: optional decoy/padding and variable chunk sizes.
 
 ### 6.8 Heterogeneous Rule Pools
@@ -219,7 +297,7 @@ Let **R** = total rule space size, **S** = number of active sessions, **T** = ti
 
 Example: R=1000, S=10,000, T=120, C=10, H=5  
 → 1.16 × 10^16 combinations  
-→ At 1 ms/attempt: ~368 million years
+→ At 1 ms/attempt: ≈368,000 years
 
 Defender cost: **O(1)** per request (hash-table/manifest lookup)  
 Attacker cost: **O(R × S × T × H^C)** per response
@@ -231,7 +309,7 @@ Attacker cost: **O(R × S × T × H^C)** per response
 1. **Non-stationarity (temporal):** Rule distribution rotates (e.g., every 30s). Attacker samples stale quickly; inferred decoders degrade to near random for new buckets/sessions.
 2. **Low sample budget:** Under i.i.d. assumption, Hoeffding suggests  
    \(N = O\big(\frac{1}{\varepsilon^2}\log\frac{1}{\delta}\big)\) samples for ε-accurate inference. With ε=0.01, δ=0.01 → ~26,500. Rotation 30s @ 10 req/s gives ~300 samples → **~88× shortfall**.
-3. **Context binding + integrity:** Each envelope/chunk bound to `method | pathHash | sessionIdHash | tsBucket [| tokenHash(trunc)]` and signed server-side (`HMAC` with tag length **t** → forgery ≈ 2^-t). Decoders are **non-portable** across routes/sessions/buckets.
+3. **Context binding + integrity:** Each envelope/chunk bound to `method | pathHash | sessionIdHash | tsBucket[|tokenHash(trunc)]` and signed server-side (`HMAC` with tag length **t** → forgery ≈ 2^-t). Decoders are **non-portable** across routes/sessions/buckets.
 4. **Heterogeneity across chunks:** Pool of 3–8 rules per chunk forces **H^C** combinations (e.g., 5^10 ≈ 9.7M). One chunk error breaks the whole response → automation **fragile**.
 5. **Attacker economics:** Defender ~0.1 ms CPU (O(1)); attacker hours per variant + constant re-work after rotation → **maintenance does not scale**.
 
@@ -281,13 +359,14 @@ FISE emphasizes:
 
 ### 6.11.2 Informal Security Rationale
 
-Let \(T*i\) be attacker time-to-infer a working decoder for a given session/bucket, and \(T_r\) the rotation period.
-FISE is \_practically* safe when **\(T_i \gg T_r\)**, so any decoder becomes stale before it scales.
+Let \(T_i\) be attacker time-to-infer a working decoder for a given session/bucket, and \(T_r\) the rotation period.
+FISE is *practically* safe when **\(T_i \gg T_r\)**, so any decoder becomes stale before it scales.
 
 Let \(C\) be attacker maintenance cost per session/bucket and \(V\) the exploitable value per unit data in that window.
 Economic safety improves as **\(C \gg V\)** (deterrence by cost).
 
 _Illustrative targets (to be validated):_ \(T_i = \text{hours}\), \(T_r = \text{tens of seconds}\) → strong time asymmetry; \(C/V \gg 1\) under rotation.
+
 
 ### 6.11.3 Why Keys on the Client Aren’t Needed
 
@@ -334,7 +413,7 @@ _Note:_ Report concrete numbers in `docs/PERFORMANCE.md` after A/B experiments.
 **Security properties (adjunct).**
 
 -   **Confidentiality (semantic)**: hides _meaning_ from naive scraping or middleboxes; not a replacement for TLS.
--   **Context binding**: envelopes are valid only under `(method|pathHash|sessionIdHash|tsBucket[|tokenHash*])`.
+-   **Context binding**: envelopes are valid only under `(method|pathHash|sessionIdHash|tsBucket[|tokenHash(trunc)])`.
 -   **Asymmetry**: attacker time‑to‑understand >> defender time‑to‑rotate.
 -   **No client secret**: avoids key exposure in the browser; HMAC secrets live only on the server.
 
@@ -347,6 +426,32 @@ _Note:_ Report concrete numbers in `docs/PERFORMANCE.md` after A/B experiments.
 
 -   **Responses (default)**: wrap JSON/media segments.
 -   **Requests (optional)**: wrap **non‑secret** payloads (e.g., proprietary query/filters) to raise scraping cost; keep auth/CSRF unchanged.
+
+---
+## 6.13 Lazy / Just-In-Time Decrypt (Behavior-Bound)
+
+**Idea.** Decrypt only when a UI element actually needs data, at the smallest useful granularity (field/segment). This eliminates a single, predictable “global decrypt” point and minimizes plaintext lifetime.
+
+### 6.13.1 Properties
+- **Behavior-bound.** Decode is triggered by real user behavior (open modal, hover/scroll, route enter, component mount).
+- **Non-aggregatable.** **Decode → render → drop**; avoid assembling full JSON; no long-lived plaintext state.
+- **Timing obfuscation.** Add small jitter and vary decode loci (main thread vs. Web Worker/JSI/WASM) so hooks are non-deterministic.
+- **Parallel-friendly.** Per-chunk decode in Workers; stream and render incrementally.
+
+### 6.13.2 Hardening Tips
+- Off-main-thread decode (Workers/JSI/WASM); use transferable buffers and zero-copy where possible.
+- Zeroize buffers immediately after render; avoid DOM text nodes/logs; do not memoize plaintext.
+- Bind envelopes to `(method|pathHash|sessionIdHash|tsBucket[|tokenHash(trunc)])`; optionally verify a **server-side HMAC** for integrity/non-transferability.
+- Add rate limits and rotate per session/time bucket to cap an attacker’s sample budget.
+
+### 6.13.3 Limit
+A fully compromised client can still snapshot plaintext **at the exact render moment**. FISE’s contribution is to ensure any observed data is **fragmented, short-lived, and non-reusable**.
+
+### 6.13.4 Suggested KPIs
+- Plaintext lifetime per component (median/P95).
+- TTFR / latency overhead for legitimate users (P95/P99).
+- Decoder Breakage Rate (DBR) after rotation.
+- Scraper Throughput Reduction (STR) vs. baseline.
 
 ---
 
@@ -391,8 +496,8 @@ Report **TTFR** (time-to-first-render) and **throughput** with N workers (server
 
 -   Server: encode + HMAC verify endpoints.
 -   Client: JS/RN decode runtime.
--   Rotation: 2–4 rule-sets, per-session selector.
--   Bindings: method/path/query + sessionId + timestamp bucket.
+-   Rotation: 2–4 rule sets, per-session selector.
+-   Bindings: method/pathHash/queryHash + sessionIdHash + time bucket.
 -   Bot controls: rate limits, light CAPTCHA/Turnstile where appropriate.
 
 ### 9.2 Normalization & CDN
@@ -413,7 +518,7 @@ Report **TTFR** (time-to-first-render) and **throughput** with N workers (server
 
 ### 9.5 Media‑Specific Guidance
 
--   **Video (HLS/DASH/CMAF)**: wrap **segments**, not manifests. Bindings include variant id and timestamp buckets. Client unwraps in workers then appends raw bytes to MSE.
+-   **Video (HLS/DASH/CMAF)**: wrap **segments**, not manifests. Bindings include variant id and time buckets. Client unwraps in workers then appends raw bytes to MSE.
 -   **Images**: whole‑file wrap (Blob URL) or **tile‑based** wrap for deep‑zoom; avoid CDN recompression on enveloped assets.
 -   **CDN/Optimizer**: disable transforms (recompress/minify) on enveloped media; validate via Gauntlet.
 -   **Chunk sizes**: 128–512 KB per segment chunk on web; schedule workers to group identical `rule_idx` for cache locality.
@@ -440,7 +545,7 @@ Report **TTFR** (time-to-first-render) and **throughput** with N workers (server
 ## 11. Evaluation & KPIs
 
 -   **Scraping reduction** (A/B): drop in effective scraper throughput (target ≥ 50–70%).
--   **Time-to-decoder** for red-team per rule-set (target ≥ 5× vs. baseline).
+-   **Time-to-decoder** for red-team per rule set (target ≥ 5× vs. baseline).
 -   Decoder breakage rate under **rotation** (maintenance cost for attacker).
 -   Client overhead P95 < 1 ms on mid-range devices for ≤10 KB payloads.
 
@@ -449,7 +554,7 @@ Report **TTFR** (time-to-first-render) and **throughput** with N workers (server
 ## 12. Future Work
 
 -   Multi-block interleaving & decoy noise segments.
--   Per-request **rule-set rotation** with server seed.
+-   Per-request **rule set rotation** with server seed.
 -   Browser-optimized **WASM fast path**.
 -   DSL & **codegen** for polymorphic-by-build pipelines.
 -   Watermarking/attribution bits for leak tracing.
@@ -459,7 +564,7 @@ Report **TTFR** (time-to-first-render) and **throughput** with N workers (server
 
 ## 13. Conclusion
 
-FISE reframes client-side protection as a **semantic, rule-based envelope**: keyless, rotating, and cheap to run. It **does not prevent** post-decode access, but it **raises attacker cost** substantially by eliminating a protocol-level universal decoder and coupling data to diversified, validated rule-sets. Used alongside TLS/AuthZ, rate-limits, and behavior defenses, FISE provides **practical defense-in-depth** for teams—especially small teams—whose competitive edge lies in the data they deliver to clients.
+FISE reframes client-side protection as a **semantic, rule-based envelope**: keyless, rotating, and cheap to run. It **does not prevent** post-decode access, but it **raises attacker cost** substantially by eliminating a protocol-level universal decoder and coupling data to diversified, validated rule sets. Used alongside TLS/AuthZ, rate-limits, and behavior defenses, FISE provides **practical defense-in-depth** for teams—especially small teams—whose competitive edge lies in the data they deliver to clients.
 
 ---
 
@@ -533,7 +638,7 @@ This section defines a path to unlock **community-driven rule diversity** and sa
 
 ### 15.1 Segment‑Envelope (recommended)
 
--   **Video**: apply FISE per **segment** (`.ts`, `.mp4`, CMAF). Super‑header announces `version`, `nChunks`, `rule_map`. Each chunk carries `rule_idx`, `chunkIndex`, `len`, bindings, and **HMAC(server)**.
+-   **Video**: apply FISE per **segment** (`.ts`, `.mp4`, CMAF). Super‑header announces `version`, `nChunks`, `rule_map`. Each chunk carries `rule_idx`, `chunkIndex`, `len`, bindings, and **HMAC (server-only key)**.
 -   **Client flow**: `fetch(segment) → WebWorker.decodeFise(chunked) → appendBuffer(bytes)` (MSE). Start render as soon as first chunk is decoded.
 -   **Images**: wrap **entire file**; decode to `Blob` then `img.src=URL.createObjectURL(blob)`. For deep‑zoom, wrap **per‑tile** for higher parallelism and per‑tile rotation.
 
@@ -557,7 +662,7 @@ This section defines a path to unlock **community-driven rule diversity** and sa
 
 ### 15.6 Critical‑Fragment Obfuscation (Selective Partial Protection)
 
-**Idea:** obfuscate a **very small portion** (≈0.5–3% bytes) that is **structurally critical** to decoding/visual quality, then restore it client‑side in the framed pipeline. This preserves **throughput** and **parallelism** while making CDN‑level restreaming impossible without the rule.
+**Idea:** obfuscate a **very small portion** (≈0.5–3% bytes) that is **structurally critical** to decoding/visual quality, then restore it client‑side in the framed pipeline. This preserves **throughput** and **parallelism** while making CDN-level restreaming **very hard and economically unattractive** without the rule.
 
 **Video (MP4/CMAF/HLS/DASH):**
 
@@ -583,7 +688,7 @@ This section defines a path to unlock **community-driven rule diversity** and sa
 **Profile:**
 
 1. **Per‑session bootstrap** (signed, no‑store).
-2. **Per‑segment envelope** (2–4 s segments) with `super‑header`, `rule_map`, and **HMAC(meta‖chunkIndex‖bindings)**.
+2. **Per‑segment envelope** (2–4 s segments) with `super‑header`, `rule_map`, and **HMAC(meta || chunkIndex || bindings)**.
 3. **Heterogeneous‑by‑chunk**: pool of 3–8 rules, selection deterministic from `(seed, chunkIndex, tsBucket)`.
 4. **Rotation by time‑bucket** (e.g., every 15–30 s).
 5. **Optional critical fragments**: touch init + IDR boundaries (≤3% bytes) to break naive playback.
@@ -615,7 +720,7 @@ On each initial HTML load, the app may embed the **effective decode rule‑set**
 -   `Link: rel=prefetch` headers
 -   First‑call bootstrap API responses
 
-Apps may **select/rotate injection paths** at runtime. Thus, even within the same ruleset family, each client can receive a **structurally different** decode pipeline.
+Apps may **select/rotate injection paths** at runtime. Thus, even within the same rule set family, each client can receive a **structurally different** decode pipeline.
 
 **Implication.** There is no single reliable “place” to locate the decoder; reverse‑engineering must begin **from scratch** for each injection variant.
 

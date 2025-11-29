@@ -137,164 +137,23 @@ Obfuscate **0.5–3%** bytes that are **structurally critical**, then restore cl
 
 ---
 
-## 📦 Installation
-
-```bash
-npm install fise
-# or
-pnpm add fise
-# or
-yarn add fise
-```
-
----
-
 ## 🚀 Quick Start
 
-**New to FISE?** Start here: **[Quick Start Guide](./docs/QUICK_START.md)** ⚡
+### Installation
 
-**Any developer can write their unique rules** - this is FISE's superpower! The Quick Start guide shows how easy it is - just copy `defaultRules` and modify the offset function!
+Install FISE using your preferred package manager: `npm install fise`, `pnpm add fise`, or `yarn add fise`
 
-FISE is incredibly simple - you only need **3 security points**. Here's a complete example:
+### Get Started
 
-**Rules definition (shared between backend and frontend):**
+**New to FISE?** Get started in minutes:
 
-```typescript
-// rules.ts - Shared between backend and frontend
-import { defaultRules } from "fise";
+- 📖 **[Quick Start Guide](./docs/QUICK_START.md)** — Complete guide with examples and patterns
+- 💡 **[FISE Examples Repository](https://github.com/anbkit/fise-examples)** — Real-world examples and production-ready code
 
-// Just copy defaultRules and modify the offset!
-export const myRules = {
-  ...defaultRules,
-  offset(c, ctx) {
-    // Your unique offset - just change the multiplier/modulo!
-    const t = ctx.timestamp ?? 0;
-    return (c.length * 13 + (t % 17)) % c.length; // Different primes!
-  }
-};
-```
-
-**Backend (encrypt):**
-
-```typescript
-// backend/api/data.ts
-import { encryptFise, xorCipher } from "fise";
-import { myRules } from "../rules.js";
-
-app.get('/api/data', (req, res) => {
-  const plaintext = "Hello, World!";
-  const encrypted = encryptFise(plaintext, xorCipher, myRules);
-  // encrypted: "22DD0WVDdpEiYqGgUWEg==DXz8XE2qEhir3KwoowSUnUA40rVIQbVT3FzgoZRBWExbu5D5Eg1dcTg2GkqvBnf6X3AZZKNoMy"
-  // (sample base64-encoded output - actual encrypted text will vary due to random salt)
-  
-  res.json({ data: encrypted });
-});
-```
-
-**Frontend (decrypt):**
-
-```typescript
-// frontend/services/data.ts
-import { decryptFise, xorCipher } from "fise";
-import { myRules } from "../rules.js";
-
-const { data: encrypted } = await fetch('/api/data').then(r => r.json());
-// encrypted: "22DD0WVDdpEiYqGgUWEg==DXz8XE2qEhir3KwoowSUnUA40rVIQbVT3FzgoZRBWExbu5D5Eg1dcTg2GkqvBnf6X3AZZKNoMy"
-const decrypted = decryptFise(encrypted, xorCipher, myRules);
-// decrypted: "Hello, World!" (decrypted plaintext)
-console.log(decrypted); // "Hello, World!"
-```
-
-That's it! Everything else is automated. 
-
-**Want more options?** Use `FiseBuilder` presets for quick rule generation:
-```typescript
-import { FiseBuilder } from "fise";
-export const rules = FiseBuilder.defaults().build();
-// or FiseBuilder.hex(), FiseBuilder.base62(), etc.
-```
-
-See [Quick Start Guide](./docs/QUICK_START.md) for more examples and patterns.
-
-## 🚀 Basic Usage
-
-### Simple Example
-
-**Backend (encrypt):**
-
-```typescript
-// backend/api/simple.ts
-import { encryptFise, xorCipher, defaultRules } from "fise";
-
-app.get('/api/simple', (req, res) => {
-  const plaintext = "Hello, world!";
-  const encrypted = encryptFise(plaintext, xorCipher, defaultRules);
-  // encrypted: "22DD0WVDdpEiYqGgUWEg==DXz8XE2qEhir3KwoowSUnUA40rVIQbVT3FzgoZRBWExbu5D5Eg1dcTg2GkqvBnf6X3AZZKNoMy"
-  // (sample base64-encoded output - actual encrypted text will vary due to random salt)
-  
-  res.json({ data: encrypted });
-});
-```
-
-**Frontend (decrypt):**
-
-```typescript
-// frontend/services/simple.ts
-import { decryptFise, xorCipher, defaultRules } from "fise";
-
-const { data: encrypted } = await fetch('/api/simple').then(r => r.json());
-// encrypted: "22DD0WVDdpEiYqGgUWEg==DXz8XE2qEhir3KwoowSUnUA40rVIQbVT3FzgoZRBWExbu5D5Eg1dcTg2GkqvBnf6X3AZZKNoMy"
-const decrypted = decryptFise(encrypted, xorCipher, defaultRules);
-// decrypted: "Hello, world!" (decrypted plaintext)
-console.log(decrypted); // "Hello, world!"
-```
-
-### With Timestamp Options
-
-**Backend (encrypt with timestamp):**
-
-```typescript
-// backend/api/timestamp.ts
-import { encryptFise, xorCipher, defaultRules } from "fise";
-
-app.get('/api/data', (req, res) => {
-  const data = { hello: "world", timestamp: Date.now() };
-  const timestamp = Math.floor(Date.now() / 60000);
-  
-  const encrypted = encryptFise(
-    JSON.stringify(data),
-    xorCipher,
-    defaultRules,
-    {
-      timestamp
-    }
-  );
-  // encrypted: "22DD0WVDdpEiYqGgUWEg==DXz8XE2qEhir3KwoowSUnUA40rVIQbVT3FzgoZRBWExbu5D5Eg1dcTg2GkqvBnf6X3AZZKNoMy"
-  // (sample base64-encoded output - actual encrypted text will vary due to random salt)
-  
-  res.json({ data: encrypted });
-});
-```
-
-**Frontend (decrypt with matching timestamp):**
-
-```typescript
-// frontend/services/data.ts
-import { decryptFise, xorCipher, defaultRules } from "fise";
-
-const { data: encrypted } = await fetch('/api/data').then(r => r.json());
-// encrypted: "22DD0WVDdpEiYqGgUWEg==DXz8XE2qEhir3KwoowSUnUA40rVIQbVT3FzgoZRBWExbu5D5Eg1dcTg2GkqvBnf6X3AZZKNoMy"
-const timestamp = Math.floor(Date.now() / 60000);
-
-const decrypted = decryptFise(encrypted, xorCipher, defaultRules, {
-  timestamp
-});
-// decrypted: '{"hello":"world","timestamp":1234567890}' (decrypted JSON string)
-const data = JSON.parse(decrypted);
-console.log(data); // { hello: "world", timestamp: 1234567890 }
-```
-
-> Server‑side may add **HMAC verification** on metadata (key stays on server) to reject tamper/replay. See `docs/SECURITY.md`.
+**Key concepts:**
+- FISE is incredibly simple — you only need **3 security points** (`offset`, `encodeLength`, `decodeLength`)
+- Any developer can write unique rules — just copy `defaultRules` and modify the offset function
+- See the [Quick Start Guide](./docs/QUICK_START.md) for detailed examples and best practices
 
 ---
 
@@ -311,7 +170,7 @@ A FISE transformation pipeline includes:
 
 Every stage is customizable; **rotation** is strongly recommended.
 
-> 📖 For complete technical details, see the [**FISE Whitepaper**](./docs/WHITEPAPER.md) (v1.0)
+> 📖 For complete technical details, see the [**FISE Engineering Whitepaper**](./docs/WHITEPAPER.md) (v1.0)
 
 ---
 
@@ -322,6 +181,9 @@ Every stage is customizable; **rotation** is strongly recommended.
 -   `docs/PERFORMANCE.md` — benchmarks & methodology
 -   `docs/SECURITY.md` — threat model & hardening guide
 -   `docs/WHITEPAPER.md` — full whitepaper (**v1.0**)
+
+**Examples & Demos:**
+-   **[FISE Examples Repository](https://github.com/anbkit/fise-examples)** — real-world examples, demos, and production-ready code
 
 ---
 
