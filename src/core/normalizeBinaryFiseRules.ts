@@ -95,6 +95,7 @@ export function normalizeFiseRulesBinary(
 			saltRange,
 			encodedLengthSize,
 			stripSalt,
+			encodeLength as any,
 			decodeLength as any,
 			offset as any,
 			ctxBase

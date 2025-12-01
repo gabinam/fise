@@ -12,13 +12,15 @@ test("randomSalt - generates string of correct length", () => {
 
 test("randomSalt - different calls produce different results", () => {
 	const len = 20;
-	const salt1 = randomSalt(len);
-	const salt2 = randomSalt(len);
+	const salts = Array.from({ length: 5 }, () => randomSalt(len));
 
-	// Very unlikely to be the same (but technically possible)
-	// We'll just check they're both valid
-	assert.strictEqual(salt1.length, len);
-	assert.strictEqual(salt2.length, len);
+	for (const salt of salts) {
+		assert.strictEqual(salt.length, len);
+	}
+	assert.ok(
+		new Set(salts).size > 1,
+		"Random salts should not all be identical"
+	);
 });
 
 test("randomSalt - uses alphanumeric characters", () => {
@@ -107,4 +109,3 @@ test("toBase64 and fromBase64 - JSON data", () => {
 	const parsed = JSON.parse(decoded);
 	assert.strictEqual(parsed.name, "FISE");
 });
-

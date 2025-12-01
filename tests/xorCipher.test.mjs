@@ -123,4 +123,3 @@ test("xorCipher - output is base64 encoded", () => {
 	const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
 	assert.ok(base64Regex.test(encrypted), "Encrypted output should be valid base64");
 });
-

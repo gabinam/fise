@@ -201,6 +201,64 @@ test("fiseBinaryEncrypt - text-based rules adaptation", () => {
 	assert.deepStrictEqual(decrypted, binaryData);
 });
 
+test("fiseBinaryEncrypt - content-sensitive text rules are rejected", () => {
+	// Text rules whose offset depends on content should fail normalization for binary use
+	const contentSensitiveRules = {
+		offset(cipherText) {
+			// Depends on actual character values
+			const len = cipherText.length || 1;
+			return cipherText.charCodeAt(0) % len;
+		},
+		encodeLength(len) {
+			return len.toString(36).padStart(2, "0");
+		},
+		decodeLength(encoded) {
+			return parseInt(encoded, 36);
+		}
+	};
+
+	const binaryData = stringToUint8Array("Hello");
+
+	assert.throws(
+		() => {
+			fiseBinaryEncrypt(binaryData, contentSensitiveRules);
+		},
+		{
+			message: /content/
+		}
+	);
+});
+
+test("fiseBinaryDecrypt - error: tampered encoded length marker", () => {
+	const binaryData = stringToUint8Array("Tamper me");
+	const fixedSaltRules = {
+		...defaultBinaryRules,
+		saltRange: { min: 5, max: 5 }
+	};
+	const timestamp = 0;
+
+	const encrypted = fiseBinaryEncrypt(binaryData, fixedSaltRules, { timestamp });
+
+	const saltLen = 5;
+	const encodedLenSize = 2; // Uint16 big-endian
+	const envelopeWithoutSalt = encrypted.slice(0, encrypted.length - saltLen);
+	const cipherTextLen = envelopeWithoutSalt.length - encodedLenSize;
+	const offset = fixedSaltRules.offset(new Uint8Array(cipherTextLen), { timestamp });
+
+	const tamperedEnvelope = new Uint8Array(encrypted.length);
+	tamperedEnvelope.set(encrypted);
+
+	// Flip one byte inside the encoded length marker
+	tamperedEnvelope[offset] = tamperedEnvelope[offset] ^ 0xff;
+
+	assert.throws(
+		() => {
+			fiseBinaryDecrypt(tamperedEnvelope, fixedSaltRules, { timestamp });
+		},
+		{ message: /cannot (find encoded length|infer salt length)/ }
+	);
+});
+
 test("fiseBinaryDecrypt - error: invalid envelope (too short)", () => {
 	const invalidEnvelope = new Uint8Array([1, 2, 3]);
 	assert.throws(
@@ -352,4 +410,3 @@ test("fiseBinaryEncrypt - very large data (1MB)", () => {
 
 	assert.deepStrictEqual(decrypted, binaryData);
 });
-

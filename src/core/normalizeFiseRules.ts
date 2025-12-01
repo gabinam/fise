@@ -57,6 +57,7 @@ export function normalizeFiseRules(rules: FiseRules<string>): NormalizedFiseRule
 			saltRange,
 			encodedLengthSize,
 			stripSalt,
+			rules.encodeLength as any,
 			rules.decodeLength as any,
 			rules.offset as any,
 			ctxBase

@@ -29,9 +29,7 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          npm run build
-          shopt -s globstar
-          node --test tests/**/*.mjs
+          npm test
 
       - name: Check build output
         run: |

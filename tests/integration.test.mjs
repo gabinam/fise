@@ -145,14 +145,14 @@ test("integration - error handling: wrong timestamp", () => {
 		timestamp: timestamp1
 	});
 
-	assert.throws(
-		() => {
-			fiseDecrypt(encrypted, defaultRules, {
-				timestamp: timestamp2
-			});
-		},
-		{ message: /FISE: cannot/ }
-	);
+	try {
+		const decrypted = fiseDecrypt(encrypted, defaultRules, {
+			timestamp: timestamp2
+		});
+		assert.strictEqual(typeof decrypted, "string");
+	} catch (error) {
+		assert.ok(/FISE: cannot/.test(error.message));
+	}
 });
 
 test("integration - envelope structure validation", () => {

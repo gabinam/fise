@@ -31,12 +31,17 @@ export function extractEnvelopeLength<T extends string | Uint8Array>(
 	saltRange: { min: number; max: number },
 	encodedLengthSize: number,
 	stripSalt: (envelope: T, saltLen: number, ctx: FiseContext) => T,
+	encodeLength: (len: number, ctx: FiseContext) => string | Uint8Array,
 	decodeLength: (encoded: string | Uint8Array, ctx: FiseContext) => number,
 	offset: (cipherText: string | Uint8Array, ctx: FiseContext) => number,
 	ctxBase: FiseContext
 ): EnvelopeLengthInfo {
+	const effectiveMax = Math.min(saltRange.max, Math.max(0, envelope.length - encodedLengthSize));
+
 	// Brute-force search across salt range
-	for (let len = saltRange.min; len <= saltRange.max; len++) {
+	for (let len = saltRange.min; len <= effectiveMax; len++) {
+		// Skip impossible lengths (salt cannot exceed envelope minus encoded marker)
+		if (len > envelope.length - encodedLengthSize) continue;
 		const withoutSalt = stripSalt(envelope, len, ctxBase);
 
 		// Check if envelope is large enough to contain encoded length
@@ -49,6 +54,10 @@ export function extractEnvelopeLength<T extends string | Uint8Array>(
 
 			// Validate decoded length
 			if (Number.isNaN(decodedLen) || decodedLen !== len) continue;
+
+			// Ensure the encoded marker matches what encodeLength would produce
+			const expectedEncoded = encodeLength(len, { ...ctxBase, saltLength: len });
+			if (!encodingsEqual(encoded, expectedEncoded)) continue;
 
 			// Reconstruct candidate ciphertext without encoded length
 			const candidate = reconstructWithoutLength(withoutSalt, i, encodedLengthSize);
@@ -74,6 +83,23 @@ export function extractEnvelopeLength<T extends string | Uint8Array>(
 		"FISE: cannot infer salt length from envelope. " +
 		"This may indicate a corrupted envelope or mismatched rules/timestamp."
 	);
+}
+
+function encodingsEqual(
+	actual: string | Uint8Array,
+	expected: string | Uint8Array
+): boolean {
+	if (typeof actual === "string" && typeof expected === "string") {
+		return actual === expected;
+	}
+	if (actual instanceof Uint8Array && expected instanceof Uint8Array) {
+		if (actual.length !== expected.length) return false;
+		for (let i = 0; i < actual.length; i++) {
+			if (actual[i] !== expected[i]) return false;
+		}
+		return true;
+	}
+	return false;
 }
 
 /**

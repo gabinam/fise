@@ -122,6 +122,69 @@ test("fiseEncrypt - multiple roundtrips with same input", () => {
     }
 });
 
+test("fiseDecrypt - error: mismatched metadata with metadata-aware rules", () => {
+    const metadataAwareRules = {
+        ...defaultRules,
+        offset(cipherText, ctx) {
+            const userId = ctx.metadata?.userId ?? 0;
+            const t = ctx.timestamp ?? 0;
+            const len = cipherText.length || 1;
+            return (len * 7 + (t % 11) + (userId % 5)) % len;
+        }
+    };
+
+    const plaintext = "Hello, metadata!";
+    const encrypted = fiseEncrypt(plaintext, metadataAwareRules, {
+        metadata: { userId: 123 }
+    });
+
+    assert.throws(
+        () => {
+            fiseDecrypt(encrypted, metadataAwareRules, {
+                metadata: { userId: 456 }
+            });
+        },
+        {
+            message: /FISE: cannot/
+        }
+    );
+});
+
+test("fiseDecrypt - error: tampered encoded length marker", () => {
+    const plaintext = "Test tamper";
+    const fixedSaltRules = {
+        ...defaultRules,
+        saltRange: { min: 10, max: 10 }
+    };
+
+    const timestamp = 0;
+    const encrypted = fiseEncrypt(plaintext, fixedSaltRules, { timestamp });
+
+    const saltLen = 10;
+    const encodedLenSize = 2; // base36 padStart(2, "0")
+    const envelopeWithoutSalt = encrypted.slice(0, encrypted.length - saltLen);
+    const cipherTextLen = envelopeWithoutSalt.length - encodedLenSize;
+    const offset = (cipherTextLen * 7 + (timestamp % 11)) % cipherTextLen;
+
+    const encodedLen = envelopeWithoutSalt.slice(offset, offset + encodedLenSize);
+    const tamperedChar =
+        encodedLen[0] === "z" ? "y" : "z";
+    const tamperedEncoded = tamperedChar + encodedLen.slice(1);
+
+    const tamperedEnvelope =
+        envelopeWithoutSalt.slice(0, offset) +
+        tamperedEncoded +
+        envelopeWithoutSalt.slice(offset + encodedLenSize) +
+        encrypted.slice(-saltLen);
+
+	assert.throws(
+		() => {
+			fiseDecrypt(tamperedEnvelope, fixedSaltRules, { timestamp });
+		},
+		{ message: /cannot (find encoded length|infer salt length)/ }
+	);
+});
+
 test("fiseEncrypt - various special characters", () => {
     const testCases = [
         "!@#$%^&*()",
